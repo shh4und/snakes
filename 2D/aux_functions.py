@@ -146,53 +146,67 @@ def smooth_forces(f: np.ndarray, sigma: float) -> np.ndarray:
         fc[:, i] = np.real(ifft(fft(f[:, i]) * fft(kernel)))
     return fc
 
-import numpy as np
-from scipy.interpolate import RegularGridInterpolator
 
-def interp_snake2(G: np.ndarray, V: np.ndarray) -> np.ndarray:
+# def interp_snake2(G: np.ndarray, V: np.ndarray) -> np.ndarray:
+#     """
+#     Interpola o campo vetorial G nas coordenadas do contorno V.
+    
+#     Args:
+#         G: Campo vetorial 2D com shape (height, width, 2), onde:
+#            - G[:, :, 0] = componente x (horizontal)
+#            - G[:, :, 1] = componente y (vertical)
+#         V: Pontos do contorno, shape (n, 2), com coordenadas (x, y).
+    
+#     Returns:
+#         s: Valores interpolados, shape (n, 2), onde:
+#            - s[:, 0] = componente x interpolada
+#            - s[:, 1] = componente y interpolada
+#     """
+#     # Definir os eixos da grade (y, x) conforme convenção do numpy
+#     y_coords = np.arange(G.shape[0])  # linhas (eixo y)
+#     x_coords = np.arange(G.shape[1])  # colunas (eixo x)
+    
+#     # Criar interpoladores para cada componente
+#     interp_x = RegularGridInterpolator(
+#         (y_coords, x_coords),  # ordem (y, x)
+#         G[..., 0],             # componente x (horizontal)
+#         method="linear",
+#         bounds_error=False,
+#         fill_value=0.0
+#     )
+    
+#     interp_y = RegularGridInterpolator(
+#         (y_coords, x_coords),  # ordem (y, x)
+#         G[..., 1],             # componente y (vertical)
+#         method="linear",
+#         bounds_error=False,
+#         fill_value=0.0
+#     )
+    
+#     # Converter coordenadas (x, y) para (y, x) e ajustar índices
+#     points = np.column_stack((V[:, 1], V[:, 0]))  # (y, x)
+    
+#     # Interpolar
+#     s_x = interp_x(points)
+#     s_y = interp_y(points)
+    
+#     return np.column_stack((s_x, s_y))
+
+def interp_snake2(field: np.ndarray, V: np.ndarray) -> np.ndarray:
     """
-    Interpola o campo vetorial G nas coordenadas do contorno V.
+    Interpola um campo 2D nos pontos do snake.
     
     Args:
-        G: Campo vetorial 2D com shape (height, width, 2), onde:
-           - G[:, :, 0] = componente x (horizontal)
-           - G[:, :, 1] = componente y (vertical)
-        V: Pontos do contorno, shape (n, 2), com coordenadas (x, y).
+        field: Campo 2D (fx ou fy).
+        V: Pontos do snake (N,2).
     
     Returns:
-        s: Valores interpolados, shape (n, 2), onde:
-           - s[:, 0] = componente x interpolada
-           - s[:, 1] = componente y interpolada
+        Valores interpolados (N,).
     """
-    # Definir os eixos da grade (y, x) conforme convenção do numpy
-    y_coords = np.arange(G.shape[0])  # linhas (eixo y)
-    x_coords = np.arange(G.shape[1])  # colunas (eixo x)
-    
-    # Criar interpoladores para cada componente
-    interp_x = RegularGridInterpolator(
-        (y_coords, x_coords),  # ordem (y, x)
-        G[..., 0],             # componente x (horizontal)
-        method="linear",
-        bounds_error=False,
-        fill_value=0.0
-    )
-    
-    interp_y = RegularGridInterpolator(
-        (y_coords, x_coords),  # ordem (y, x)
-        G[..., 1],             # componente y (vertical)
-        method="linear",
-        bounds_error=False,
-        fill_value=0.0
-    )
-    
-    # Converter coordenadas (x, y) para (y, x) e ajustar índices
-    points = np.column_stack((V[:, 1], V[:, 0]))  # (y, x)
-    
-    # Interpolar
-    s_x = interp_x(points)
-    s_y = interp_y(points)
-    
-    return np.column_stack((s_x, s_y))
+    y = np.arange(field.shape[0])
+    x = np.arange(field.shape[1])
+    interp = RegularGridInterpolator((y, x), field, method="linear", bounds_error=False, fill_value=0)
+    return interp(V[:, [1, 0]])  # (y, x)
 
 
 def subdivision(V0: np.ndarray, k: float) -> np.ndarray:
