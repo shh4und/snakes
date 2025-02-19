@@ -41,7 +41,7 @@ class Snake2D:
         
         # Calcular mapa de bordas (usando Canny)
         self.edge_map = cv2.Canny(
-            self.image.astype(np.uint8), 
+            self.I.astype(np.uint8), 
             int(255 * 0.1), 
             int(255 * 0.3), 
             L2gradient=True
