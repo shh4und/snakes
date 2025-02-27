@@ -11,9 +11,10 @@ from scipy.sparse.linalg import spsolve
 import numpy as np
 from scipy import sparse
 
-def compute_A(n: int, alpha: float, beta: float) -> sparse.csc_matrix:
+
+def compute_A(n: int, alpha: float, beta: float, k: float) -> sparse.csc_matrix:
     """Compute the regularization matrix A = -alpha*A2 + beta*A4
-    
+
     Args:
         n: Number of points in the contour
         alpha: Weight for the second derivative term
@@ -21,20 +22,20 @@ def compute_A(n: int, alpha: float, beta: float) -> sparse.csc_matrix:
     Returns:
         A: Regularization matrix in CSC sparse format
     """
+
+    alpha_normalized = alpha / (k**2)
+
     # ----------------------------------------------
     # 1. Build A2 (Second derivative matrix)
     # ----------------------------------------------
     main_diag_A2 = -2 * np.ones(n)
-    off_diag_A2 = np.ones(n-1)
-    
+    off_diag_A2 = np.ones(n - 1)
+
     # Tridiagonal matrix with periodic boundary conditions
     A2 = sparse.diags(
-        [main_diag_A2, off_diag_A2, off_diag_A2],
-        [0, 1, -1],
-        shape=(n, n),
-        format="lil"
+        [main_diag_A2, off_diag_A2, off_diag_A2], [0, 1, -1], shape=(n, n), format="lil"
     )
-    
+
     # Apply periodic boundary conditions (closed contour)
     A2[0, -1] = 1
     A2[-1, 0] = 1
@@ -44,41 +45,42 @@ def compute_A(n: int, alpha: float, beta: float) -> sparse.csc_matrix:
     # 2. Build A4 (Fourth derivative matrix)
     # ----------------------------------------------
     main_diag_A4 = 6 * np.ones(n)
-    off_diag1_A4 = -4 * np.ones(n-1)
-    off_diag2_A4 = np.ones(n-2)
-    
+    off_diag1_A4 = -4 * np.ones(n - 1)
+    off_diag2_A4 = np.ones(n - 2)
+
     # Pentadiagonal matrix (default without boundaries)
     A4 = sparse.diags(
         [main_diag_A4, off_diag1_A4, off_diag1_A4, off_diag2_A4, off_diag2_A4],
         [0, 1, -1, 2, -2],
         shape=(n, n),
-        format="lil"
+        format="lil",
     )
-    
+
     # Apply periodic boundary conditions:
     # Adjacent neighbors (positions 0 <-> n-1, n-1 <-> 0)
     A4[0, -1] = -4
     A4[-1, 0] = -4
-    
+
     # Second neighbors (positions 0 <-> n-2, n-1 <-> 1)
     A4[0, -2] = 1
     A4[-1, 1] = 1
     A4[1, -1] = 1
     A4[-2, 0] = 1
-    
+
     A4 = A4.tocsc()
 
     # ----------------------------------------------
     # 3. Combine A = -alpha*A2 + beta*A4
     # ----------------------------------------------
-    A = -alpha * A2 + beta * A4
+
+    A = -alpha_normalized * A2 + beta * A4
     return A.tocsc()
 
 
 def balloon_force(V: np.ndarray) -> np.ndarray:
     """
     Compute the balloon force (normal direction to the contour).
-    
+
     Args:
         V: Contour vertices, shape (n, 2).
     Returns:
@@ -86,7 +88,7 @@ def balloon_force(V: np.ndarray) -> np.ndarray:
     """
     n = V.shape[0]
     # Matriz de diferenças centrais para a primeira derivada (tangente)
-    A = sparse.diags([-0.5, 0.5], [-1, 1], shape=(n, n), format='lil')
+    A = sparse.diags([-0.5, 0.5], [-1, 1], shape=(n, n), format="lil")
     # Condições periódicas
     A[0, -1] = -0.5
     A[-1, 0] = 0.5
@@ -99,10 +101,11 @@ def balloon_force(V: np.ndarray) -> np.ndarray:
     norm[norm < 1e-10] = 1  # Evitar divisão por zero
     return normal / norm
 
+
 def gradient_centred(I: np.ndarray) -> np.ndarray:
     """
     Compute the image gradient using centered differences with symmetric boundaries.
-    
+
     Args:
         I: Input image, shape (height, width).
     Returns:
@@ -111,19 +114,19 @@ def gradient_centred(I: np.ndarray) -> np.ndarray:
     G = np.zeros((*I.shape, 2))
     # Gradiente vertical (direção y)
     G[1:-1, :, 0] = 0.5 * (I[2:, :] - I[:-2, :])  # Interior
-    G[0, :, 0] = I[1, :] - I[0, :]               # Borda superior
-    G[-1, :, 0] = I[-1, :] - I[-2, :]            # Borda inferior
+    G[0, :, 0] = I[1, :] - I[0, :]  # Borda superior
+    G[-1, :, 0] = I[-1, :] - I[-2, :]  # Borda inferior
     # Gradiente horizontal (direção x)
     G[:, 1:-1, 1] = 0.5 * (I[:, 2:] - I[:, :-2])  # Interior
-    G[:, 0, 1] = I[:, 1] - I[:, 0]               # Borda esquerda
-    G[:, -1, 1] = I[:, -1] - I[:, -2]            # Borda direita
+    G[:, 0, 1] = I[:, 1] - I[:, 0]  # Borda esquerda
+    G[:, -1, 1] = I[:, -1] - I[:, -2]  # Borda direita
     return G
 
 
 def smooth_forces(f: np.ndarray, sigma: float) -> np.ndarray:
     """
     Smooth forces using Gaussian convolution with cyclic boundary conditions.
-    
+
     Args:
         f: Force vectors, shape (n, 2).
         sigma: Standard deviation of the Gaussian kernel.
@@ -133,13 +136,13 @@ def smooth_forces(f: np.ndarray, sigma: float) -> np.ndarray:
     n = f.shape[0]
     if sigma <= 1e-6:
         return f.copy()
-    
+
     # Criar kernel Gaussiano
     t = np.arange(n) - n // 2
-    kernel = np.exp(-t**2 / (2 * sigma**2))
-    kernel = np.roll(kernel, n//2)  # Centralizar o kernel
+    kernel = np.exp(-(t**2) / (2 * sigma**2))
+    kernel = np.roll(kernel, n // 2)  # Centralizar o kernel
     kernel = kernel / kernel.sum()  # Normalizar
-    
+
     # Aplicar convolução via FFT para cada componente
     fc = np.zeros_like(f)
     for i in range(2):
@@ -147,76 +150,33 @@ def smooth_forces(f: np.ndarray, sigma: float) -> np.ndarray:
     return fc
 
 
-# def interp_snake2(G: np.ndarray, V: np.ndarray) -> np.ndarray:
-#     """
-#     Interpola o campo vetorial G nas coordenadas do contorno V.
-    
-#     Args:
-#         G: Campo vetorial 2D com shape (height, width, 2), onde:
-#            - G[:, :, 0] = componente x (horizontal)
-#            - G[:, :, 1] = componente y (vertical)
-#         V: Pontos do contorno, shape (n, 2), com coordenadas (x, y).
-    
-#     Returns:
-#         s: Valores interpolados, shape (n, 2), onde:
-#            - s[:, 0] = componente x interpolada
-#            - s[:, 1] = componente y interpolada
-#     """
-#     # Definir os eixos da grade (y, x) conforme convenção do numpy
-#     y_coords = np.arange(G.shape[0])  # linhas (eixo y)
-#     x_coords = np.arange(G.shape[1])  # colunas (eixo x)
-    
-#     # Criar interpoladores para cada componente
-#     interp_x = RegularGridInterpolator(
-#         (y_coords, x_coords),  # ordem (y, x)
-#         G[..., 0],             # componente x (horizontal)
-#         method="linear",
-#         bounds_error=False,
-#         fill_value=0.0
-#     )
-    
-#     interp_y = RegularGridInterpolator(
-#         (y_coords, x_coords),  # ordem (y, x)
-#         G[..., 1],             # componente y (vertical)
-#         method="linear",
-#         bounds_error=False,
-#         fill_value=0.0
-#     )
-    
-#     # Converter coordenadas (x, y) para (y, x) e ajustar índices
-#     points = np.column_stack((V[:, 1], V[:, 0]))  # (y, x)
-    
-#     # Interpolar
-#     s_x = interp_x(points)
-#     s_y = interp_y(points)
-    
-#     return np.column_stack((s_x, s_y))
-
 def interp_snake2(field: np.ndarray, V: np.ndarray) -> np.ndarray:
     """
     Interpola um campo 2D nos pontos do snake.
-    
+
     Args:
         field: Campo 2D (fx ou fy).
         V: Pontos do snake (N,2).
-    
+
     Returns:
         Valores interpolados (N,).
     """
     y = np.arange(field.shape[0])
     x = np.arange(field.shape[1])
-    interp = RegularGridInterpolator((y, x), field, method="linear", bounds_error=False, fill_value=0)
+    interp = RegularGridInterpolator(
+        (y, x), field, method="linear", bounds_error=False, fill_value=0
+    )
     return interp(V[:, [1, 0]])  # (y, x)
 
 
 def subdivision(V0: np.ndarray, k: float) -> np.ndarray:
     """
     Subdivide um contorno inicial em pontos uniformemente espaçados.
-    
+
     Args:
         V0: Array de vértices iniciais com shape (N, 2).
         k: Distância desejada entre os pontos após subdivisão.
-    
+
     Returns:
         V: Array de pontos subdivididos com shape (M, 2).
     """
@@ -228,14 +188,14 @@ def subdivision(V0: np.ndarray, k: float) -> np.ndarray:
 
     # Subdivisão entre vértices consecutivos
     for i in range(N - 1):
-        dx = x[i+1] - x[i]
-        dy = y[i+1] - y[i]
+        dx = x[i + 1] - x[i]
+        dy = y[i + 1] - y[i]
         length = np.sqrt(dx**2 + dy**2)
         nbre = max(1, round(length / k))
-        
+
         h_x = dx / nbre
         h_y = dy / nbre
-        
+
         for j in range(nbre):
             xi.append(x[i] + j * h_x)
             yi.append(y[i] + j * h_y)
@@ -245,23 +205,24 @@ def subdivision(V0: np.ndarray, k: float) -> np.ndarray:
     dy = y[0] - y[-1]
     length = np.sqrt(dx**2 + dy**2)
     nbre = max(1, int(length / k))  # Usar int para evitar pontos fracionários
-    
+
     h_x = dx / nbre
     h_y = dy / nbre
-    
+
     for j in range(nbre):
         xi.append(x[-1] + j * h_x)
         yi.append(y[-1] + j * h_y)
 
     return np.column_stack((xi, yi))
 
+
 def polygon_parity(V: np.ndarray) -> int:
     """
     Calcula a orientação do polígono (1 para horário, -1 para anti-horário).
-    
+
     Args:
         V: Array de pontos do polígono com shape (N, 2).
-    
+
     Returns:
         parity: 1 (horário) ou -1 (anti-horário).
     """
@@ -271,7 +232,7 @@ def polygon_parity(V: np.ndarray) -> int:
     for i in range(n):
         j = (i + 1) % n
         area += (V[j, 0] - V[i, 0]) * (V[j, 1] + V[i, 1])
-    
+
     return 1 if area > 0 else -1
 
 
@@ -313,18 +274,62 @@ def init_rectangle(vertex, num_p):
 def init_circle(center: tuple, radius: float, num_points: int = 50) -> np.ndarray:
     """
     Inicializa um contorno circular e ajusta a orientação para horário.
-    
+
     Args:
         center: Centro do círculo (x, y).
         radius: Raio do círculo.
         num_points: Número de pontos no contorno.
-    
+
     Returns:
         V: Array de pontos do círculo com shape (num_points, 2).
     """
     t = np.linspace(0, 2 * np.pi, num_points)
     x = center[0] + radius * np.cos(t)
     y = center[1] + radius * np.sin(t)
+    V = np.column_stack((x, y))
+
+    # Garantir orientação horária
+    if polygon_parity(V) != 1:
+        V = V[::-1, :]  # Inverter a ordem dos pontos
+
+    return V
+
+def init_elipse(center: tuple, semi_major: float, semi_minor: float, 
+                angle: float = 0.0, num_points: int = 50) -> np.ndarray:
+    """
+    Inicializa um contorno elíptico e ajusta a orientação para horário.
+    
+    Args:
+        center: Centro da elipse (x, y).
+        semi_major: Comprimento do semi-eixo maior.
+        semi_minor: Comprimento do semi-eixo menor.
+        angle: Ângulo de rotação da elipse em radianos (opcional, padrão = 0).
+        num_points: Número de pontos no contorno.
+    
+    Returns:
+        V: Array de pontos da elipse com shape (num_points, 2).
+    """
+    # Parâmetro angular
+    t = np.linspace(0, 2 * np.pi, num_points)
+    
+    # Coordenadas paramétricas da elipse (sem rotação)
+    x = semi_major * np.cos(t)
+    y = semi_minor * np.sin(t)
+    
+    # Aplicar rotação
+    if angle != 0:
+        rotation_matrix = np.array([
+            [np.cos(angle), -np.sin(angle)],
+            [np.sin(angle), np.cos(angle)]
+        ])
+        xy = np.column_stack((x, y)) @ rotation_matrix.T
+        x, y = xy[:, 0], xy[:, 1]
+    
+    # Transladar para o centro
+    x += center[0]
+    y += center[1]
+    
+    # Criar array de pontos
     V = np.column_stack((x, y))
     
     # Garantir orientação horária
@@ -333,15 +338,14 @@ def init_circle(center: tuple, radius: float, num_points: int = 50) -> np.ndarra
     
     return V
 
-
 def splines_interpolation2d(V: np.ndarray, nb_points: int) -> np.ndarray:
     """
     Interpola um contorno fechado usando splines cúbicas e amostra novos pontos uniformemente.
-    
+
     Args:
         V: Pontos do contorno, shape (N, 2).
         nb_points: Número desejado de pontos após interpolação.
-    
+
     Returns:
         PT: Pontos interpolados, shape (nb_points, 2).
     """
@@ -353,19 +357,29 @@ def splines_interpolation2d(V: np.ndarray, nb_points: int) -> np.ndarray:
     # 1. Calcular matriz W (Equação 14 do artigo)
     # --------------------------------------------
     main_diag = -2 * np.ones(N)
-    off_diag = np.ones(N-1)
+    off_diag = np.ones(N - 1)
     W = diags([main_diag, off_diag, off_diag], [0, 1, -1], shape=(N, N), format="lil")
-    W[0, N-1] = 1
-    W[N-1, 0] = 1
+    W[0, N - 1] = 1
+    W[N - 1, 0] = 1
     W = W.tocsc()
 
     # --------------------------------------------
     # 2. Resolver sistema linear para X (Equações 35 e 36)
     # --------------------------------------------
     d = (N**2) * (W @ V)  # Termo da direita do sistema
-    M = diags([2/3 * np.ones(N), 1/6 * np.ones(N), 1/6 * np.ones(N), 1/6 * np.ones(N), 1/6 * np.ones(N)],
-              [0, 1, -1, N-1, -(N-1)], shape=(N, N), format="csc")  # Matriz M (Equação 34)
-    
+    M = diags(
+        [
+            2 / 3 * np.ones(N),
+            1 / 6 * np.ones(N),
+            1 / 6 * np.ones(N),
+            1 / 6 * np.ones(N),
+            1 / 6 * np.ones(N),
+        ],
+        [0, 1, -1, N - 1, -(N - 1)],
+        shape=(N, N),
+        format="csc",
+    )  # Matriz M (Equação 34)
+
     # Resolver M * X = d para x e y separadamente
     X = np.zeros((N, 2))
     X[:, 0] = spsolve(M, d[:, 0])
@@ -376,23 +390,23 @@ def splines_interpolation2d(V: np.ndarray, nb_points: int) -> np.ndarray:
     # --------------------------------------------
     L = np.zeros(N)
     num_samples = 100  # Número de amostras por segmento
-    
+
     for i in range(N):
         t = np.linspace(0, 1, num_samples)[:, np.newaxis]  # Shape (100, 1)
         A = 1 - t  # Shape (100, 1)
-        B = t      # Shape (100, 1)
-        
+        B = t  # Shape (100, 1)
+
         # Calcular derivada vetorialmente
         next_idx = (i + 1) % N
         diff_v = V[next_idx] - V[i]  # Shape (2,)
-        
+
         # Termo das velocidades nas extremidades
-        term_i = -(3 * A**2 - 1) * X[i]        # Shape (100, 2)
+        term_i = -(3 * A**2 - 1) * X[i]  # Shape (100, 2)
         term_next = (3 * B**2 - 1) * X[next_idx]  # Shape (100, 2)
-        
+
         # Derivada da spline (Equação 32)
-        der = N * diff_v + (term_i + term_next) / (6*N)  # Shape (100, 2)
-        
+        der = N * diff_v + (term_i + term_next) / (6 * N)  # Shape (100, 2)
+
         # Calcular comprimento do segmento
         segment_length = np.sqrt(np.sum(der**2, axis=1))  # Shape (100,)
         # L[i] = np.mean(segment_length)  # Média como aproximação da integral
@@ -410,27 +424,27 @@ def splines_interpolation2d(V: np.ndarray, nb_points: int) -> np.ndarray:
 
     for i in range(N):
         # Encontrar pontos no segmento i
-        cond = (a >= L_cum[i]) & (a < L_cum[i+1])
-        if i == N-1:
-            cond |= (a >= L_cum[N])
-        
+        cond = (a >= L_cum[i]) & (a < L_cum[i + 1])
+        if i == N - 1:
+            cond |= a >= L_cum[N]
+
         if not np.any(cond):
             continue
-        
-        A = (a[cond] - L_cum[i+1]) / (L_cum[i] - L_cum[i+1])
+
+        A = (a[cond] - L_cum[i + 1]) / (L_cum[i] - L_cum[i + 1])
         B = 1 - A
         # delta = 1/N  # Espaçamento uniforme normalizado
-        delta = (i/N - (i-1)/N)  # Espaçamento real entre segmentos
-        C = (1/6) * (A**3 - A) * delta**2
-        D = (1/6) * (B**3 - B) * delta**2
-        
+        delta = i / N - (i - 1) / N  # Espaçamento real entre segmentos
+        C = (1 / 6) * (A**3 - A) * delta**2
+        D = (1 / 6) * (B**3 - B) * delta**2
+
         # Interpolar pontos
-        next_idx = (i+1) % N
+        next_idx = (i + 1) % N
         xy = (
-            A[:, np.newaxis] * V[i] +
-            B[:, np.newaxis] * V[next_idx] +
-            C[:, np.newaxis] * X[i] +
-            D[:, np.newaxis] * X[next_idx]
+            A[:, np.newaxis] * V[i]
+            + B[:, np.newaxis] * V[next_idx]
+            + C[:, np.newaxis] * X[i]
+            + D[:, np.newaxis] * X[next_idx]
         )
         PT[cond] = xy
 
