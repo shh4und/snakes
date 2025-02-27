@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 from snake import Snake2D, SnakeParams
-from utils import *
+from aux_functions import *
 def run_snake_demo(image_path: str):
     # Load image
     img = cv2.imread(image_path, 0)
