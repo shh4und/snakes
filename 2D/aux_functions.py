@@ -6,7 +6,7 @@ from scipy.sparse.linalg import spsolve
 import numpy as np
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
-
+import cv2
 
 import numpy as np
 from scipy import sparse
@@ -337,6 +337,23 @@ def init_elipse(center: tuple, semi_major: float, semi_minor: float,
         V = V[::-1, :]  # Inverter a ordem dos pontos
     
     return V
+
+def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
+    dim = None
+    h, w = image.shape[:2]
+    
+    if width is None and height is None:
+        return image
+        
+    if width is None:
+        r = height / float(h)
+        dim = (int(w * r), height)
+    else:
+        r = width / float(w)
+        dim = (width, int(h * r))
+    
+    resized = cv2.resize(image, dim, interpolation=inter)
+    return resized
 
 def splines_interpolation2d(V: np.ndarray, nb_points: int) -> np.ndarray:
     """
