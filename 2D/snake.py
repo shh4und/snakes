@@ -45,11 +45,11 @@ class Snake2D:
     def setup(self):
         """Inicializa parâmetros do snake."""
         # Suavização Gaussiana
-        self.I = cv2.GaussianBlur(self.image, (0, 0), self.params.sigma)
+        #self.I = cv2.GaussianBlur(self.image, (0, 0), self.params.sigma)
 
         # Calcular mapa de bordas (usando Canny)
         self.edge_map = cv2.Canny(
-            self.I.astype(np.uint8), int(255 * 0.1), int(255 * 0.3), L2gradient=True
+            self.image.astype(np.uint8), int(255 * 0.1), int(255 * 0.3), L2gradient=True
         )
 
         # Calcular campo VFC
@@ -77,7 +77,7 @@ class Snake2D:
         n = 0
         eps = 1.0
 
-        while eps > 9e-2 and n < self.params.max_iter:
+        while eps > 1e-3 and n < self.params.max_iter:
             V_prev = self.V.copy()
 
             # Força externa: Interpolar campo VFC nos pontos do snake
@@ -95,9 +95,9 @@ class Snake2D:
             V1 = self.igpi @ (self.V + self.params.gamma * F_ext)
 
             # Critério de parada
-            # eps = np.sqrt(np.mean((V1 - V_prev)**2))
-            eps = scipy.linalg.norm(V1 - V_prev)
-            if n == self.params.max_iter-1: print(eps)
+            eps = np.sqrt(np.mean((V1 - V_prev)**2))
+            # eps = scipy.linalg.norm(V1 - V_prev)
+            if n >= self.params.max_iter-1 or eps<=1e-3: print(eps)
             self.V = V1
 
             n += 1
