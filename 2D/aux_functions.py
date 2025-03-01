@@ -3,13 +3,8 @@ from scipy import sparse
 from scipy.fft import fft, ifft
 from scipy.interpolate import RegularGridInterpolator
 from scipy.sparse.linalg import spsolve
-import numpy as np
 from scipy.sparse import diags
-from scipy.sparse.linalg import spsolve
 import cv2
-
-import numpy as np
-from scipy import sparse
 
 
 def compute_A(n: int, alpha: float, beta: float, k: float) -> sparse.csc_matrix:
