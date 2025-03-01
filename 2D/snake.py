@@ -4,11 +4,13 @@ import numpy as np
 from vfc import *
 from aux_functions import *
 from scipy import sparse
+from scipy import ndimage as ndi
 import scipy.linalg
 # from scipy.sparse.linalg import inv
 from dataclasses import dataclass
 from typing import Optional, Union, Tuple
 from skimage.util import img_as_ubyte
+from skimage import feature
 
 
 @dataclass
@@ -42,16 +44,27 @@ class Snake2D:
         self.params = params or SnakeParams()
         self.setup()
 
+    def get_edge_map(self):
+        if hasattr(self, 'edge_map'):
+            return self.edge_map.astype(np.uint8)
+        print("self has no edge_map attr")
+    def get_I(self):
+        if hasattr(self, 'I'):
+            return self.I.astype(np.uint8)
+        print("self has no I attr")
+    def get_fext_components(self):
+        if hasattr(self, 'fx') and hasattr(self, 'fy'):
+            return self.fx.astype(np.uint8), self.fy.astype(np.uint8)
+        print("self has no fext components")
+        
     def setup(self):
         """Inicializa parâmetros do snake."""
         # Suavização Gaussiana
-        #self.I = cv2.GaussianBlur(self.image, (0, 0), self.params.sigma)
+        self.I = ndi.gaussian_filter(self.image.astype(np.float64), self.params.sigma)
 
         # Calcular mapa de bordas (usando Canny)
-        self.edge_map = cv2.Canny(
-            self.image.astype(np.uint8), int(255 * 0.1), int(255 * 0.3), L2gradient=True
-        )
-
+        self.edge_map = cv2.Canny(self.I.astype(np.uint8) if self.params.sigma > 0 else self.image.astype(np.uint8), int(255 * 0.1), int(255 * 0.3), L2gradient=True)
+        #self.edge_map = feature.canny(self.I.astype(np.float64), self.params.sigma, 0.1, 0.3)
         # Calcular campo VFC
         self.kx, self.ky = create_vfc_kernel_2d(
             self.params.vfc_ksize, self.params.vfc_sigma
@@ -76,7 +89,10 @@ class Snake2D:
         start_time = time.time()
         n = 0
         eps = 1.0
-
+        
+        # Initialize condition array (hack to stop balloon force)
+        self.condi = np.ones(self.N, dtype=bool)
+        
         while eps > 1e-3 and n < self.params.max_iter:
             V_prev = self.V.copy()
 
@@ -89,6 +105,19 @@ class Snake2D:
             if self.params.kb != 0:
                 B = balloon_force(self.V)
                 B = smooth_forces(B, self.params.sb)
+                
+                # Hack to stop balloon force (like in MATLAB code)
+                if hasattr(self, 'condi') and len(self.condi) == len(self.V):
+                    # Calculate magnitude of gradient and balloon forces
+                    norm_gradient = np.sum(F_ext**2, axis=1)
+                    norm_balloon = np.sum(B**2, axis=1)
+                    
+                    # Update condition array - stop balloon where gradient is strong
+                    self.condi = self.condi & (norm_gradient < (self.params.kb**2 * norm_balloon))
+                    
+                    # Apply condition to balloon force
+                    B = B * self.condi[:, np.newaxis]
+                
                 F_ext += self.params.kb * B
 
             # Atualizar posições
@@ -96,14 +125,27 @@ class Snake2D:
 
             # Critério de parada
             eps = np.sqrt(np.mean((V1 - V_prev)**2))
-            # eps = scipy.linalg.norm(V1 - V_prev)
             if n >= self.params.max_iter-1 or eps<=1e-3: print(eps)
             self.V = V1
+            
+            # Apply cubic spline refinement periodically (every 100 iterations)
+            if self.params.cubic_spline_refinement and (n % 100 == 0):
+                # Calculate distances between consecutive points
+                distances = dist_points(self.V)
+                
+                # If any distance exceeds max distance, refine the snake
+                if np.max(distances) > self.params.dmax:
+                    self.refine_snake(self.V)
+                    # Note: refine_snake already updates N, V, regularization matrix, and condi
 
             n += 1
+            
+            # Check timeout
+            #if time.time() - start_time > self.params.timeout:
+            #    print(f"Timeout reached after {n} iterations")
+            #    break
 
         return self.V, n, time.time() - start_time
-
     def refine_snake(self, V1: np.ndarray):
         """Refine snake sampling using cubic splines"""
         new_size = int(len(V1) * self.params.mfactor)
