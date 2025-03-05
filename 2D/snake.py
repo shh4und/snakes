@@ -5,28 +5,30 @@ from ac2D import *
 from scipy import sparse
 from scipy import ndimage as ndi
 from dataclasses import dataclass
-from typing import Optional, Union, Tuple
-from skimage.util import img_as_ubyte
-from skimage import feature
+from typing import Optional
 
 
 @dataclass
 class SnakeParams:
-    alpha: float = 1750.0  # Continuity
-    k: float = 2.0  # scale param to normalize alpha with k**2
+    alpha: float = 1000.0  # Continuity
+    k: float = 3.0  # scale param to normalize alpha with k**2
     beta: float = 500.0  # Curvature Penalization
     gamma: float = 0.00015  # Time step
     sigma: float = 1.0  # Gaussian blur
     kb: float = 0.0  # Balloon coefficient
-    sb: float = 50.0  # Balloon smoothing
-    max_iter: int = 10000  # Max iterations
+    sb: float = 0.0  # Balloon smoothing
+    max_iter: int = 1000  # Max iterations
     verbose: bool = False
     cubic_spline_refinement: bool = False
     dmax: float = 2.0  # Max distance between points
-    mfactor: float = 1.1  # Refinement factor
+    mfactor: float = 1.0  # Refinement factor
     timeout: float = float("inf")
-    vfc_ksize: int = 5
+    vfc_ksize: int = 5 
     vfc_sigma: float = 3.0
+    canny_thresh1: float = 0.1
+    canny_thresh2: float = 0.3
+    sobel_sz: int = 3
+    L2_gradient: bool = False
 
 
 class Snake2D:
@@ -68,9 +70,10 @@ class Snake2D:
                 if self.params.sigma > 0
                 else self.image.astype(np.uint8)
             ),
-            int(255 * 0.1),
-            int(255 * 0.3),
-            L2gradient=True,
+            255 * self.params.canny_thresh1,
+            255 * self.params.canny_thresh2,
+            apertureSize=self.params.sobel_sz,
+            L2gradient=self.params.L2_gradient,
         )
         # self.edge_map = feature.canny(self.I.astype(np.float64), self.params.sigma, 0.1, 0.3)
         # Calcular campo VFC
@@ -135,8 +138,6 @@ class Snake2D:
 
             # Critério de parada
             eps = np.sqrt(np.mean((V1 - V_prev) ** 2))
-            if n >= self.params.max_iter - 1 or eps <= 1e-3:
-                print(eps)
             self.V = V1
 
             # Apply cubic spline refinement periodically (every 100 iterations)
