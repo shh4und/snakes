@@ -78,8 +78,8 @@ def interp_snake2(field: np.ndarray, V: np.ndarray) -> np.ndarray:
     
     return result
 
-@nb.jit(nopython=True, parallel=True)
-def calculate_arc_length(V, X, N, num_samples=100):
+@nb.jit(nopython=True, parallel=True, fastmath=True)
+def calculate_arc_length(V, X, N, num_samples=50):
     """Versão paralelizada do cálculo de comprimento de arco"""
     L = np.zeros(N)
     
@@ -157,16 +157,15 @@ def calculate_arc_length(V, X, N, num_samples=100):
 @nb.jit(nopython=True)
 def find_segments_for_points(a, L_cum, N, nb_points):
     """Encontra o segmento para cada ponto de amostragem"""
+    #parallelized by segments rather than points
     segment_indices = np.zeros(nb_points, dtype=np.int32)
-    found = np.zeros(nb_points, dtype=np.int32)
     
-    # Primeiro passo: encontrar o segmento para cada ponto
-    for i in range(N):
-        for k in range(nb_points):
-            if found[k] == 0 and ((a[k] >= L_cum[i] and a[k] < L_cum[i + 1]) or 
+    for k in prange(nb_points):
+        for i in range(N):
+            if ((a[k] >= L_cum[i] and a[k] < L_cum[i + 1]) or 
                 (i == N - 1 and a[k] >= L_cum[N])):
                 segment_indices[k] = i
-                found[k] = 1
+                break
     
     return segment_indices
 
