@@ -224,7 +224,6 @@ class Snake3D:
         if hasattr(self, "fx") and hasattr(self, "fy"):
             return self.fx.astype(np.uint8), self.fy.astype(np.uint8)
         print("self has no fext components")
-
         
     def setup_contours(self, v_init):
         # Case 1: List of contours (one per slice)
