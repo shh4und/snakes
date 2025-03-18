@@ -1,3 +1,6 @@
+import sys
+sys.path.append("/home/alxns/RMNIM/")
+from ip import * # type: ignore
 import cv2
 import time
 import numpy as np
@@ -6,7 +9,6 @@ from scipy import sparse
 from scipy import ndimage as ndi
 from dataclasses import dataclass
 from typing import Optional, Union
-from vfc3D import *
 
 
 @dataclass
