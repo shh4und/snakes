@@ -59,4 +59,12 @@ def apply_vfc_3d(edge_volume, kx, ky, kz):
     fy = convolve(edge_volume, ky, mode='constant', cval=0.0)
     fz = convolve(edge_volume, kz, mode='constant', cval=0.0)
     
+    # After computing all forces
+    magnitude = np.sqrt(fx**2 + fy**2 + fz**2)
+    max_mag = magnitude.max()
+    if max_mag > 0:
+        fx /= max_mag
+        fy /= max_mag
+        fz /= max_mag
+    
     return fx, fy, fz
