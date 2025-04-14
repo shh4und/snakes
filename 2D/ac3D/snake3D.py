@@ -13,17 +13,17 @@ from .interpolation import interpolate_volume_field
 
 @dataclass
 class Snake3DParams:
-    alpha: float = 0.1        # Tension coefficient
-    beta: float = 0.01        # Rigidity coefficient
-    gamma: float = 0.1        # Time step
+    alpha: float = 500.0      # Match MATLAB
+    beta: float = 170.0       # Match MATLAB
+    gamma: float = 3e-5       # Match MATLAB
     sigma: float = 1.0        # Volume smoothing
-    kb: float = 0.0           # Balloon coefficient
+    kb: float = -100.0        # Negative for shrinking       # Time step
     edge_threshold: float = 0.1  # Edge detection threshold
     max_iter: int = 200       # Maximum iterations
     convergence_eps: float = 1e-4  # Convergence threshold
-    vfc_size: int = 5         # VFC kernel size
-    vfc_sigma: float = 3.0    # VFC kernel sigma
-    remesh_interval: int = 0  # Remeshing frequency (0 = never)
+    vfc_size: int = 15         # VFC kernel size
+    vfc_sigma: float = 5.0    # VFC kernel sigma
+    remesh_interval: int = 50  # Remeshing frequency (0 = never)
     timeout: float = float("inf")  # Timeout in seconds
     verbose: bool = False     # Print progress info
 
@@ -47,12 +47,10 @@ class Snake3D:
         # Smooth volume data
         self.smooth_volume = ndi.gaussian_filter(self.volume, self.params.sigma)
         
-        # Detect edges (gradient magnitude)
+        # Alternative: Use continuous edge strength
         gx, gy, gz = np.gradient(self.smooth_volume)
-        self.edge_volume = np.sqrt(gx**2 + gy**2 + gz**2)
-        
-        # Threshold edges
-        self.edge_volume = (self.edge_volume > self.params.edge_threshold).astype(np.float64)
+        edge_strength = np.sqrt(gx**2 + gy**2 + gz**2)
+        self.edge_volume = edge_strength / (edge_strength.max() + 1e-8)
         
         # Compute VFC field
         self.kx, self.ky, self.kz = create_vfc_kernel_3d(
@@ -101,8 +99,11 @@ class Snake3D:
         )
         
         # Get gradient values at vertex positions
-        fx_values = fx_interp(positions)
-        fy_values = fy_interp(positions)
+        # fx_values = fx_interp(positions) # In MATLAB, there's an order swap for x and y 
+        # fy_values = fy_interp(positions)
+        # Try swapping x and y components
+        fx_values = fy_interp(positions)
+        fy_values = fx_interp(positions)
         fz_values = fz_interp(positions)
         
         # Combine into a single force array
@@ -116,8 +117,22 @@ class Snake3D:
             # Calculate balloon force
             B = self.params.kb * normals
             
-            # Optionally implement adaptive balloon force like in 2D version
-            # This could stop balloon force where gradient is strong
+            # Initialize condition array if it doesn't exist
+            if not hasattr(self, "condi") or len(self.condi) != len(self.vertices):
+                self.condi = np.ones(len(self.vertices), dtype=bool)
+            
+            # Calculate magnitude of gradient and balloon forces
+            gradient_forces = np.column_stack((fx_values, fy_values, fz_values))
+            norm_gradient = np.sum(gradient_forces**2, axis=1)
+            norm_balloon = np.sum(B**2, axis=1)
+            
+            # Update condition array - stop balloon where gradient is strong
+            self.condi = self.condi & (
+                norm_gradient < (self.params.kb**2 * norm_balloon)
+            )
+            
+            # Apply condition to balloon force
+            B = B * self.condi[:, np.newaxis]
             
             # Add to external forces
             F_ext += B
@@ -162,7 +177,7 @@ class Snake3D:
                 self.improve_mesh_quality()
                 
             # Report progress
-            if self.params.verbose and iterations % 10 == 0:
+            if self.params.verbose and iterations % 50 == 0:
                 print(f"Iteration {iterations}, displacement = {eps:.6f}")
                 
             # Check timeout
@@ -196,7 +211,8 @@ class Snake3D:
         self.vertices = self.mesh.vertices
         self.faces = self.mesh.faces
         self.num_vertices = len(self.vertices)
-        
+        # Reset condition array after remeshing
+        self.condi = np.ones(self.num_vertices, dtype=bool)
         # Re-compute regularization matrix with new topology
         self.update_regularization_matrix()
     
@@ -219,37 +235,6 @@ class Snake3D:
             mask[valid_indices[:, 0], valid_indices[:, 1], valid_indices[:, 2]] = 1
             
         return mask
-        
-    def display_progress(self):
-        """Display current mesh state"""
-        try:
-            import matplotlib.pyplot as plt
-            from mpl_toolkits.mplot3d import Axes3D
-            
-            fig = plt.figure(figsize=(10, 10))
-            ax = fig.add_subplot(111, projection='3d')
-            
-            # Plot mesh as wireframe
-            ax.plot_trisurf(
-                self.vertices[:, 0], 
-                self.vertices[:, 1], 
-                self.vertices[:, 2],
-                triangles=self.faces,
-                alpha=0.5
-            )
-            
-            # Set axis labels
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            
-            plt.draw()
-            plt.pause(0.01)
-            plt.close()
-            
-        except ImportError:
-            print("Matplotlib not available for visualization")
-
 
 def evolution_snake3d(volume_data, mesh_init, **kwargs):
     """
