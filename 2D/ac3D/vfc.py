@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import convolve
+from scipy.signal import fftconvolve
 
 def create_vfc_kernel_3d(size, sigma=3.0):
     """
@@ -55,9 +56,9 @@ def apply_vfc_3d(edge_volume, kx, ky, kz):
         Tuple of force components (fx, fy, fz)
     """
     # Convolve edge volume with each kernel component
-    fx = convolve(edge_volume, kx, mode='constant', cval=0.0)
-    fy = convolve(edge_volume, ky, mode='constant', cval=0.0)
-    fz = convolve(edge_volume, kz, mode='constant', cval=0.0)
+    fx = fftconvolve(edge_volume, kx, mode='same')
+    fy = fftconvolve(edge_volume, ky, mode='same')
+    fz = fftconvolve(edge_volume, kz, mode='same')
     
     # After computing all forces
     magnitude = np.sqrt(fx**2 + fy**2 + fz**2)

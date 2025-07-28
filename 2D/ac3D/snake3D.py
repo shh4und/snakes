@@ -99,11 +99,11 @@ class Snake3D:
         )
         
         # Get gradient values at vertex positions
-        # fx_values = fx_interp(positions) # In MATLAB, there's an order swap for x and y 
-        # fy_values = fy_interp(positions)
+        fx_values = fx_interp(positions) # In MATLAB, there's an order swap for x and y 
+        fy_values = fy_interp(positions)
         # Try swapping x and y components
-        fx_values = fy_interp(positions)
-        fy_values = fx_interp(positions)
+        # fy_values = fx_interp(positions)
+        # fx_values = fy_interp(positions)
         fz_values = fz_interp(positions)
         
         # Combine into a single force array
@@ -121,19 +121,19 @@ class Snake3D:
             if not hasattr(self, "condi") or len(self.condi) != len(self.vertices):
                 self.condi = np.ones(len(self.vertices), dtype=bool)
             
-            # Calculate magnitude of gradient and balloon forces
-            gradient_forces = np.column_stack((fx_values, fy_values, fz_values))
-            norm_gradient = np.sum(gradient_forces**2, axis=1)
-            norm_balloon = np.sum(B**2, axis=1)
-            
-            # Update condition array - stop balloon where gradient is strong
-            self.condi = self.condi & (
-                norm_gradient < (self.params.kb**2 * norm_balloon)
-            )
-            
-            # Apply condition to balloon force
-            B = B * self.condi[:, np.newaxis]
-            
+                # Calculate magnitude of gradient and balloon forces
+                gradient_forces = np.column_stack((fx_values, fy_values, fz_values))
+                norm_gradient = np.sum(gradient_forces**2, axis=1)
+                norm_balloon = np.sum(B**2, axis=1)
+                
+                # Update condition array - stop balloon where gradient is strong
+                self.condi = self.condi & (
+                    norm_gradient < (self.params.kb**2 * norm_balloon)
+                )
+                
+                # Apply condition to balloon force
+                B = B * self.condi[:, np.newaxis]
+                
             # Add to external forces
             F_ext += B
             
